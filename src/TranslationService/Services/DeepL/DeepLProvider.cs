@@ -1,9 +1,7 @@
 using DeepL;
-using DeepL.Model;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Polly;
-using Polly.RateLimit;
 using TranslationService.Configuration;
 using TranslationService.Interfaces;
 
@@ -38,103 +36,82 @@ public class DeepLProvider : ITranslationProvider, IDisposable
         _cache = cache;
 
         // Initialize the translation client
-        var options = new TranslatorOptions
+        var authKey = _settings.ApiKey;
+        _client = new Translator(authKey, new TranslatorOptions
         {
-            ServerUrl = _settings.UseFreeTier ? "https://api-free.deepl.com" : "https://api.deepl.com",
-            MaximumNetworkRetries = _settings.EnableRetries ? _settings.MaxRetries : 0
-        };
+            ServerUrl = _settings.UseFreeTier ? "https://api-free.deepl.com" : "https://api.deepl.com"
+        });
 
-        _client = new Translator(_settings.ApiKey, options);
-
-        // Configure retry policy with exponential backoff
+        // Configure retry policy
         _retryPolicy = Policy
-            .Handle<Exception>(ex => IsTransientException(ex))
+            .Handle<Exception>(IsTransientException)
             .WaitAndRetryAsync(
                 _settings.MaxRetries,
                 retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
                 onRetry: (ex, timeSpan, retryCount, context) =>
                 {
                     _logger.LogWarning(ex,
-                        "Retry {RetryCount} after {Delay}s due to {Error}",
-                        retryCount, timeSpan.TotalSeconds, ex.Message);
+                        "Error executing DeepL request. Retry {RetryCount} after {RetryTime}s",
+                        retryCount, timeSpan.TotalSeconds);
                 });
 
-        // Configure rate limiting policy
-        _rateLimitPolicy = Policy.RateLimitAsync(
-            numberOfExecutions: 100, // Adjust based on your quota
-            per: TimeSpan.FromMinutes(1),
-            onRejected: (context) =>
-            {
-                _logger.LogWarning("Rate limit exceeded. Request rejected.");
-                return Task.CompletedTask;
-            });
+        // Configure rate limit policy
+        _rateLimitPolicy = Policy.RateLimitAsync(60, TimeSpan.FromMinutes(1));
     }
 
     /// <inheritdoc/>
     public async Task<IEnumerable<string>> GetSupportedLanguagesAsync()
     {
-        if (_supportedLanguages != null)
-            return _supportedLanguages;
-
-        return await _cache.GetOrCreateAsync(LanguagesCacheKey, async entry =>
+        try
         {
-            entry.AbsoluteExpirationRelativeToNow = DefaultCacheTime;
-
-            try
-            {
-                var sourceLanguages = await ExecuteWithPolicies(() =>
-                    _client.GetSourceLanguagesAsync());
-
-                _supportedLanguages = sourceLanguages
-                    .Select(l => l.Code.ToLower())
-                    .ToList();
-
+            if (_supportedLanguages != null)
                 return _supportedLanguages;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting supported languages");
-                throw;
-            }
-        });
+
+            var languages = await ExecuteWithPolicies(() =>
+                _client.GetSourceLanguagesAsync());
+
+            _supportedLanguages = languages.Select(l => l.Code.ToLower()).ToList();
+            return _supportedLanguages;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting supported languages from DeepL");
+            throw;
+        }
     }
 
     /// <inheritdoc/>
     public async Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage)
     {
-        var cacheKey = GetTranslationCacheKey(text, sourceLanguage, targetLanguage);
-        return await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        try
         {
-            entry.AbsoluteExpirationRelativeToNow = DefaultCacheTime;
+            var cacheKey = GetTranslationCacheKey(text, sourceLanguage, targetLanguage);
+            if (_cache.TryGetValue(cacheKey, out string? cachedTranslation) && cachedTranslation != null)
+                return cachedTranslation;
 
-            try
+            var options = new TextTranslateOptions
             {
-                var options = new TextTranslateOptions
-                {
-                    PreserveFormatting = _settings.PreserveFormatting == "1",
-                    SplitSentences = ParseSplitSentences(_settings.SplitSentences),
-                    Formality = _settings.Formality ? Formality.More : Formality.Default,
-                    GlossaryId = _settings.UseGlossary ? _settings.GlossaryId : null,
-                    TagHandling = ParseTagHandling(_settings.TagHandling),
-                    IgnoreTags = _settings.IgnoreTags
-                };
+                PreserveFormatting = _settings.PreserveFormatting == "1",
+                Formality = _settings.Formality ? Formality.More : Formality.Default
+            };
 
-                var response = await ExecuteWithPolicies(() =>
-                    _client.TranslateTextAsync(
-                        text,
-                        sourceLanguage == "auto" ? null : sourceLanguage,
-                        targetLanguage,
-                        options));
+            var response = await ExecuteWithPolicies(() =>
+                _client.TranslateTextAsync(
+                    text,
+                    sourceLanguage,
+                    targetLanguage,
+                    options));
 
-                return response.Text;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error translating text. Source: {Source}, Target: {Target}",
-                    sourceLanguage, targetLanguage);
-                throw;
-            }
-        });
+            var translation = response.Text;
+            _cache.Set(cacheKey, translation, DefaultCacheTime);
+            return translation;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error translating text with DeepL. Source: {Source}, Target: {Target}",
+                sourceLanguage, targetLanguage);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
@@ -148,30 +125,27 @@ public class DeepLProvider : ITranslationProvider, IDisposable
             var textList = texts.ToList();
             var results = new Dictionary<string, string>();
 
+            var options = new TextTranslateOptions
+            {
+                PreserveFormatting = _settings.PreserveFormatting == "1",
+                Formality = _settings.Formality ? Formality.More : Formality.Default
+            };
+
             // Process in batches according to settings
             for (int i = 0; i < textList.Count; i += _settings.MaxBatchSize)
             {
-                var batch = textList.Skip(i).Take(_settings.MaxBatchSize).ToArray();
-                var options = new TextTranslateOptions
-                {
-                    PreserveFormatting = _settings.PreserveFormatting == "1",
-                    SplitSentences = ParseSplitSentences(_settings.SplitSentences),
-                    Formality = _settings.Formality ? Formality.More : Formality.Default,
-                    GlossaryId = _settings.UseGlossary ? _settings.GlossaryId : null,
-                    TagHandling = ParseTagHandling(_settings.TagHandling),
-                    IgnoreTags = _settings.IgnoreTags
-                };
-
-                var response = await ExecuteWithPolicies(() =>
+                var batch = textList.Skip(i).Take(_settings.MaxBatchSize).ToList();
+                var responses = await ExecuteWithPolicies(() =>
                     _client.TranslateTextAsync(
                         batch,
-                        sourceLanguage == "auto" ? null : sourceLanguage,
+                        sourceLanguage,
                         targetLanguage,
                         options));
 
-                for (int j = 0; j < batch.Length; j++)
+                var responseList = responses.ToList();
+                for (int j = 0; j < responseList.Count; j++)
                 {
-                    results[batch[j]] = response[j].Text;
+                    results[textList[i + j]] = responseList[j].Text;
                 }
             }
 
@@ -179,7 +153,7 @@ public class DeepLProvider : ITranslationProvider, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error batch translating texts. Source: {Source}, Target: {Target}",
+            _logger.LogError(ex, "Error batch translating texts with DeepL. Source: {Source}, Target: {Target}",
                 sourceLanguage, targetLanguage);
             throw;
         }
@@ -188,24 +162,18 @@ public class DeepLProvider : ITranslationProvider, IDisposable
     /// <inheritdoc/>
     public async Task<string> DetectLanguageAsync(string text)
     {
-        var cacheKey = $"{CacheKeyPrefix}Detect_{text.GetHashCode()}";
-        return await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        try
         {
-            entry.AbsoluteExpirationRelativeToNow = DefaultCacheTime;
+            var result = await ExecuteWithPolicies(() =>
+                _client.TranslateTextAsync(text, null, "en"));
 
-            try
-            {
-                var response = await ExecuteWithPolicies(() =>
-                    _client.DetectLanguageAsync(text));
-
-                return response.Language.ToLower();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error detecting language");
-                throw;
-            }
-        });
+            return result.DetectedSourceLanguageCode.ToLower();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error detecting language with DeepL");
+            throw;
+        }
     }
 
     /// <inheritdoc/>
@@ -217,57 +185,31 @@ public class DeepLProvider : ITranslationProvider, IDisposable
 
     private async Task<T> ExecuteWithPolicies<T>(Func<Task<T>> action)
     {
-        return await _rateLimitPolicy
-            .WrapAsync(_retryPolicy)
+        return await _retryPolicy.WrapAsync(_rateLimitPolicy)
             .ExecuteAsync(action);
     }
 
     private static string GetTranslationCacheKey(string text, string sourceLanguage, string targetLanguage)
     {
-        return $"{CacheKeyPrefix}Trans_{text.GetHashCode()}_{sourceLanguage}_{targetLanguage}";
+        return $"{CacheKeyPrefix}{sourceLanguage}_{targetLanguage}_{text.GetHashCode()}";
     }
 
     private static bool IsTransientException(Exception ex)
     {
-        return ex switch
+        if (ex is DeepLException deepLEx)
         {
-            DeepLException dle => IsTransientDeepLError(dle),
-            HttpRequestException => true,
-            TimeoutException => true,
-            TaskCanceledException => true,
-            _ => false
-        };
+            // Check for specific DeepL error types that are transient
+            return deepLEx.Message.Contains("quota exceeded") ||
+                   deepLEx.Message.Contains("too many requests") ||
+                   deepLEx.Message.Contains("resource not found") ||
+                   deepLEx.Message.Contains("service unavailable");
+        }
+
+        return ex is HttpRequestException || ex is TimeoutException;
     }
-
-    private static bool IsTransientDeepLError(DeepLException ex)
-    {
-        // Check for specific DeepL error types that are transient
-        return ex.ErrorCode switch
-        {
-            "quota_exceeded" => true, // Rate limiting
-            "too_many_requests" => true, // Rate limiting
-            "service_unavailable" => true, // Server error
-            _ => false
-        };
-    }
-
-    private static SplitSentences ParseSplitSentences(string value) => value switch
-    {
-        "0" => SplitSentences.None,
-        "nonewlines" => SplitSentences.NoNewlines,
-        _ => SplitSentences.All
-    };
-
-    private static TagHandling? ParseTagHandling(string? value) => value?.ToLower() switch
-    {
-        "xml" => DeepL.Model.TagHandling.Xml,
-        "html" => DeepL.Model.TagHandling.Html,
-        _ => null
-    };
 
     public void Dispose()
     {
         _client?.Dispose();
-        GC.SuppressFinalize(this);
     }
 }

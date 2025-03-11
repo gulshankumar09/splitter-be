@@ -70,7 +70,8 @@ public class RedisCache : IRedisCache, IDisposable
             var fullKey = GetFullKey(key);
             var serializedValue = JsonSerializer.Serialize(value, _jsonOptions);
             var expiry = TimeSpan.FromMinutes(expirationMinutes ?? _settings.DefaultTtlMinutes);
-            await _db.StringSetAsync(fullKey, serializedValue, expiry);
+            var keepTtl = expiry > TimeSpan.Zero;
+            await _db.StringSetAsync(fullKey, serializedValue, expiry, keepTtl);
         }
         catch (Exception ex)
         {
@@ -156,13 +157,14 @@ public class RedisCache : IRedisCache, IDisposable
         try
         {
             var expiry = TimeSpan.FromMinutes(expirationMinutes ?? _settings.DefaultTtlMinutes);
+            var keepTtl = expiry > TimeSpan.Zero;
             var batch = _db.CreateBatch();
 
             foreach (var kv in keyValues)
             {
                 var fullKey = GetFullKey(kv.Key);
                 var serializedValue = JsonSerializer.Serialize(kv.Value, _jsonOptions);
-                batch.StringSetAsync(fullKey, serializedValue, expiry);
+                await batch.StringSetAsync(fullKey, serializedValue, expiry, keepTtl);
             }
 
             batch.Execute();
@@ -180,7 +182,7 @@ public class RedisCache : IRedisCache, IDisposable
         {
             var fullChannel = GetFullKey(channel);
             var serializedMessage = JsonSerializer.Serialize(message, _jsonOptions);
-            await _db.PublishAsync(fullChannel, serializedMessage);
+            await _db.PublishAsync(RedisChannel.Literal(fullChannel), serializedMessage);
         }
         catch (Exception ex)
         {
@@ -196,7 +198,7 @@ public class RedisCache : IRedisCache, IDisposable
             var fullChannel = GetFullKey(channel);
             var sub = _redis.GetSubscriber();
 
-            var queue = await sub.SubscribeAsync(fullChannel);
+            var queue = await sub.SubscribeAsync(RedisChannel.Literal(fullChannel));
             queue.OnMessage(async message =>
             {
                 try
@@ -246,7 +248,109 @@ public class RedisCache : IRedisCache, IDisposable
         }
     }
 
-    private string GetFullKey(string key) => $"{_settings.InstanceName}:{key}";
+    public async Task<TimeSpan> GetTtlAsync(string key)
+    {
+        try
+        {
+            var fullKey = GetFullKey(key);
+            return await _db.KeyTimeToLiveAsync(fullKey) ?? TimeSpan.Zero;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting TTL for key: {Key}", key);
+            throw;
+        }
+    }
+
+    public async Task SetExpirationAsync(string key, int minutes)
+    {
+        try
+        {
+            var fullKey = GetFullKey(key);
+            await _db.KeyExpireAsync(fullKey, TimeSpan.FromMinutes(minutes));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting expiration for key: {Key}", key);
+            throw;
+        }
+    }
+
+    public async Task<long> IncrementAsync(string key, long value = 1)
+    {
+        try
+        {
+            var fullKey = GetFullKey(key);
+            return await _db.StringIncrementAsync(fullKey, value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error incrementing value for key: {Key}", key);
+            throw;
+        }
+    }
+
+    public async Task<long> DecrementAsync(string key, long value = 1)
+    {
+        try
+        {
+            var fullKey = GetFullKey(key);
+            return await _db.StringDecrementAsync(fullKey, value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error decrementing value for key: {Key}", key);
+            throw;
+        }
+    }
+
+    public async Task SetAddAsync(string key, string value)
+    {
+        try
+        {
+            var fullKey = GetFullKey(key);
+            await _db.SetAddAsync(fullKey, value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding value to set for key: {Key}", key);
+            throw;
+        }
+    }
+
+    public async Task<IEnumerable<string>> SetMembersAsync(string key)
+    {
+        try
+        {
+            var fullKey = GetFullKey(key);
+            var values = await _db.SetMembersAsync(fullKey);
+            return values.Select(v => (string)v!);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting set members for key: {Key}", key);
+            throw;
+        }
+    }
+
+    public async Task<bool> SetAsync<T>(string key, T value, int? expirationMinutes, bool onlyIfNotExists)
+    {
+        try
+        {
+            var fullKey = GetFullKey(key);
+            var serializedValue = JsonSerializer.Serialize(value, _jsonOptions);
+            var expiry = TimeSpan.FromMinutes(expirationMinutes ?? _settings.DefaultTtlMinutes);
+
+            return await _db.StringSetAsync(fullKey, serializedValue, expiry, onlyIfNotExists);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting value for key: {Key}", key);
+            throw;
+        }
+    }
+
+    private string GetFullKey(string key) => string.IsNullOrEmpty(_settings.InstanceName) ? key : $"{_settings.InstanceName}:{key}";
 
     public void Dispose()
     {

@@ -5,6 +5,8 @@ using TranslationService.Enums;
 using TranslationService.Interfaces;
 using TranslationService.Services;
 using TranslationService.Data;
+using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 
 namespace TranslationService.Extensions;
 

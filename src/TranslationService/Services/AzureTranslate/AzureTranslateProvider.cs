@@ -1,10 +1,12 @@
 using Azure;
 using Azure.AI.Translation.Text;
+using Azure.AI.Translation.Text.Models;
 using Azure.Core;
-using Microsoft.Extensions.Caching.Memory;
+using Azure.Core.Pipeline;
 using Microsoft.Extensions.Options;
 using Polly;
 using Polly.RateLimit;
+using SharedLibrary.Interfaces;
 using TranslationService.Configuration;
 using TranslationService.Interfaces;
 
@@ -13,26 +15,26 @@ namespace TranslationService.Services.AzureTranslate;
 /// <summary>
 /// Implementation of Azure Translator API provider
 /// </summary>
-public class AzureTranslateProvider : ITranslationProvider, IDisposable
+public class AzureTranslateProvider : ITranslationProvider
 {
     private readonly TextTranslationClient _client;
     private readonly AzureTranslateSettings _settings;
     private readonly ILogger<AzureTranslateProvider> _logger;
-    private readonly IMemoryCache _cache;
+    private readonly IRedisCache _cache;
     private readonly AsyncPolicy _retryPolicy;
     private readonly AsyncPolicy _rateLimitPolicy;
     private IList<string>? _supportedLanguages;
 
     private const string CacheKeyPrefix = "AzureTranslate_";
     private const string LanguagesCacheKey = CacheKeyPrefix + "Languages";
-    private static readonly TimeSpan DefaultCacheTime = TimeSpan.FromHours(24);
+    private static readonly TimeSpan DefaultCacheTime = TimeSpan.FromDays(30);
 
     public string ProviderName => "Azure Translator";
 
     public AzureTranslateProvider(
         IOptions<AzureTranslateSettings> settings,
         ILogger<AzureTranslateProvider> logger,
-        IMemoryCache cache)
+        IRedisCache cache)
     {
         _settings = settings.Value;
         _logger = logger;
@@ -67,12 +69,7 @@ public class AzureTranslateProvider : ITranslationProvider, IDisposable
         // Configure rate limiting policy
         _rateLimitPolicy = Policy.RateLimitAsync(
             numberOfExecutions: 100, // Adjust based on your quota
-            per: TimeSpan.FromMinutes(1),
-            onRejected: (context) =>
-            {
-                _logger.LogWarning("Rate limit exceeded. Request rejected.");
-                return Task.CompletedTask;
-            });
+            perTimeSpan: TimeSpan.FromMinutes(1));
     }
 
     /// <inheritdoc/>
@@ -81,62 +78,44 @@ public class AzureTranslateProvider : ITranslationProvider, IDisposable
         if (_supportedLanguages != null)
             return _supportedLanguages;
 
-        return await _cache.GetOrCreateAsync(LanguagesCacheKey, async entry =>
+        var languages = await _cache.GetAsync<IEnumerable<string>>(LanguagesCacheKey);
+        if (languages != null)
+            return languages;
+
+        try
         {
-            entry.AbsoluteExpirationRelativeToNow = DefaultCacheTime;
+            var response = await ExecuteWithPolicies(() =>
+                _client.GetLanguagesAsync(scope: "translation"));
 
-            try
-            {
-                var response = await ExecuteWithPolicies(() =>
-                    _client.GetLanguagesAsync(scope: "translation"));
+            _supportedLanguages = [.. response.Value.Translation.Select(l => l.Key)];
+            await _cache.SetAsync(LanguagesCacheKey, _supportedLanguages, (int)DefaultCacheTime.TotalMinutes);
 
-                _supportedLanguages = response.Value.Translation
-                    .Select(l => l.Key)
-                    .ToList();
-
-                return _supportedLanguages;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting supported languages");
-                throw;
-            }
-        });
+            return _supportedLanguages ?? [];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting supported languages");
+            throw;
+        }
     }
 
     /// <inheritdoc/>
     public async Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage)
     {
-        var cacheKey = GetTranslationCacheKey(text, sourceLanguage, targetLanguage);
-        return await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        try
         {
-            entry.AbsoluteExpirationRelativeToNow = DefaultCacheTime;
+            var response = await ExecuteWithPolicies<Response<IReadOnlyList<TranslatedTextItem>>>(() =>
+                _client.TranslateAsync(targetLanguage, text));
 
-            try
-            {
-                var options = new TranslateTextOptions
-                {
-                    FromLanguage = sourceLanguage,
-                    ToLanguage = targetLanguage,
-                    IncludeSentenceLength = _settings.IncludeSentenceLength,
-                    IncludeAlignment = _settings.IncludeAlignment,
-                    ProfanityAction = _settings.FilterProfanity ? ProfanityAction.Marked : ProfanityAction.NoAction,
-                    Category = _settings.Category
-                };
-
-                var response = await ExecuteWithPolicies(() =>
-                    _client.TranslateAsync(text, options));
-
-                var translation = response.Value.FirstOrDefault();
-                return translation?.Translations.FirstOrDefault()?.Text ?? text;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error translating text. Source: {Source}, Target: {Target}",
-                    sourceLanguage, targetLanguage);
-                throw;
-            }
-        });
+            var translation = response.Value.FirstOrDefault()?.Translations.FirstOrDefault()?.Text ?? text;
+            return translation;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error translating text. Source: {Source}, Target: {Target}",
+                sourceLanguage, targetLanguage);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
@@ -154,18 +133,15 @@ public class AzureTranslateProvider : ITranslationProvider, IDisposable
             for (int i = 0; i < textList.Count; i += _settings.MaxBatchSize)
             {
                 var batch = textList.Skip(i).Take(_settings.MaxBatchSize).ToArray();
-                var options = new TranslateTextOptions
-                {
-                    FromLanguage = sourceLanguage,
-                    ToLanguage = targetLanguage,
-                    IncludeSentenceLength = _settings.IncludeSentenceLength,
-                    IncludeAlignment = _settings.IncludeAlignment,
-                    ProfanityAction = _settings.FilterProfanity ? ProfanityAction.Marked : ProfanityAction.NoAction,
-                    Category = _settings.Category
-                };
-
-                var response = await ExecuteWithPolicies(() =>
-                    _client.TranslateAsync(batch, options));
+                var response = await ExecuteWithPolicies<Response<IReadOnlyList<TranslatedTextItem>>>(() =>
+                    _client.TranslateAsync(
+                        content: batch,
+                        targetLanguages: new[] { targetLanguage },
+                        sourceLanguage: sourceLanguage,
+                        includeSentenceLength: _settings.IncludeSentenceLength,
+                        includeAlignment: _settings.IncludeAlignment,
+                        profanityAction: _settings.FilterProfanity ? ProfanityAction.Marked : ProfanityAction.NoAction,
+                        category: _settings.Category));
 
                 for (int j = 0; j < batch.Length; j++)
                 {
@@ -189,24 +165,25 @@ public class AzureTranslateProvider : ITranslationProvider, IDisposable
     public async Task<string> DetectLanguageAsync(string text)
     {
         var cacheKey = $"{CacheKeyPrefix}Detect_{text.GetHashCode()}";
-        return await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        var cachedLanguage = await _cache.GetAsync<string>(cacheKey);
+        if (cachedLanguage != null)
+            return cachedLanguage;
+
+        try
         {
-            entry.AbsoluteExpirationRelativeToNow = DefaultCacheTime;
+            var response = await ExecuteWithPolicies<Response<IReadOnlyList<BreakSentenceItem>>>(() =>
+                _client.FindSentenceBoundariesAsync(text));
 
-            try
-            {
-                var response = await ExecuteWithPolicies(() =>
-                    _client.DetectLanguageAsync(text));
-
-                var detection = response.Value.FirstOrDefault();
-                return detection?.Language ?? "und"; // "und" for undefined
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error detecting language");
-                throw;
-            }
-        });
+            var detection = response.Value.FirstOrDefault()?.DetectedLanguage;
+            var language = detection?.Language ?? "und"; // "und" for undefined
+            await _cache.SetAsync(cacheKey, language, (int)DefaultCacheTime.TotalMinutes);
+            return language;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error detecting language");
+            throw;
+        }
     }
 
     /// <inheritdoc/>
@@ -225,7 +202,7 @@ public class AzureTranslateProvider : ITranslationProvider, IDisposable
 
     private static string GetTranslationCacheKey(string text, string sourceLanguage, string targetLanguage)
     {
-        return $"{CacheKeyPrefix}Trans_{text.GetHashCode()}_{sourceLanguage}_{targetLanguage}";
+        return $"Trans_{text.GetHashCode()}_{sourceLanguage}_{targetLanguage}";
     }
 
     private static bool IsTransientException(Exception ex)
@@ -243,11 +220,5 @@ public class AzureTranslateProvider : ITranslationProvider, IDisposable
     private static bool IsTransientStatusCode(int statusCode)
     {
         return statusCode is >= 500 or 429; // Server errors or rate limiting
-    }
-
-    public void Dispose()
-    {
-        _client?.Dispose();
-        GC.SuppressFinalize(this);
     }
 }

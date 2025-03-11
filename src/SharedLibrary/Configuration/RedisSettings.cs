@@ -18,12 +18,12 @@ public class RedisSettings
     /// <summary>
     /// The instance name (prefix for keys)
     /// </summary>
-    public string InstanceName { get; set; } = "SharedLibrary";
+    public string? InstanceName { get; set; }
 
     /// <summary>
-    /// Default TTL for cache entries in minutes
+    /// Default TTL (Time To Live) for cache entries in minutes
     /// </summary>
-    public int DefaultTtlMinutes { get; set; } = 60;
+    public int DefaultTtlMinutes { get; set; }
 
     /// <summary>
     /// Whether to enable SSL/TLS

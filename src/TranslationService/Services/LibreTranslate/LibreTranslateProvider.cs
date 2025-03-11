@@ -64,12 +64,7 @@ public class LibreTranslateProvider : ITranslationProvider
         // Configure rate limiting policy
         _rateLimitPolicy = Policy.RateLimitAsync(
             numberOfExecutions: 60, // Adjust based on instance limits
-            per: TimeSpan.FromMinutes(1),
-            onRejected: (context) =>
-            {
-                _logger.LogWarning("Rate limit exceeded. Request rejected.");
-                return Task.CompletedTask;
-            });
+            perTimeSpan: TimeSpan.FromMinutes(1));
     }
 
     /// <inheritdoc/>
