@@ -25,6 +25,11 @@ builder.Services.AddScoped<IRecurringExpenseRepository, RecurringExpenseReposito
 builder.Services.AddScoped<IRecurringExpenseService, RecurringExpenseService>();
 builder.Services.AddHostedService<RecurringExpenseBackgroundService>();
 
+// Budget Management Services
+builder.Services.AddScoped<IBudgetRepository, BudgetRepository>();
+builder.Services.AddScoped<IBudgetService, BudgetService>();
+builder.Services.AddHostedService<BudgetBackgroundService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

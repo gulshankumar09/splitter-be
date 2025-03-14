@@ -18,6 +18,11 @@ public class ExpenseDbContext : DbContext
     public DbSet<UserCurrencyPreference> UserCurrencyPreferences { get; set; }
     public DbSet<GroupCurrencyPreference> GroupCurrencyPreferences { get; set; }
 
+    // Budget Management
+    public DbSet<Budget> Budgets { get; set; }
+    public DbSet<BudgetCategory> BudgetCategories { get; set; }
+    public DbSet<BudgetAlert> BudgetAlerts { get; set; }
+
     public ExpenseDbContext(DbContextOptions<ExpenseDbContext> options) : base(options)
     {
     }
@@ -37,5 +42,10 @@ public class ExpenseDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ExchangeRateConfiguration());
         modelBuilder.ApplyConfiguration(new UserCurrencyPreferenceConfiguration());
         modelBuilder.ApplyConfiguration(new GroupCurrencyPreferenceConfiguration());
+
+        // Apply budget-related configurations
+        modelBuilder.ApplyConfiguration(new BudgetConfiguration());
+        modelBuilder.ApplyConfiguration(new BudgetCategoryConfiguration());
+        modelBuilder.ApplyConfiguration(new BudgetAlertConfiguration());
     }
 }
