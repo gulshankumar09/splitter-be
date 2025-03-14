@@ -1,4 +1,5 @@
 using ExpenseService.API.Extensions;
+using ExpenseService.API.Services;
 using ExpenseService.Application.Interfaces;
 using ExpenseService.Application.Services;
 using ExpenseService.Infrastructure.Repositories;
@@ -20,6 +21,9 @@ builder.Services.AddScoped<ISettlementRepository, SettlementRepository>();
 builder.Services.AddScoped<IBalanceService, BalanceService>();
 builder.Services.AddScoped<IReportingService, ReportingService>();
 builder.Services.AddScoped<IExportService, ExportService>();
+builder.Services.AddScoped<IRecurringExpenseRepository, RecurringExpenseRepository>();
+builder.Services.AddScoped<IRecurringExpenseService, RecurringExpenseService>();
+builder.Services.AddHostedService<RecurringExpenseBackgroundService>();
 
 var app = builder.Build();
 

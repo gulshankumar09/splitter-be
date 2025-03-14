@@ -12,6 +12,7 @@ public class ExpenseDbContext : DbContext
     public DbSet<Group> Groups { get; set; }
     public DbSet<GroupMember> GroupMembers { get; set; }
     public DbSet<SettlementRecord> SettlementRecords { get; set; }
+    public DbSet<RecurringExpense> RecurringExpenses { get; set; }
 
     public ExpenseDbContext(DbContextOptions<ExpenseDbContext> options) : base(options)
     {
@@ -25,5 +26,6 @@ public class ExpenseDbContext : DbContext
         modelBuilder.ApplyConfiguration(new GroupConfiguration());
         modelBuilder.ApplyConfiguration(new GroupMemberConfiguration());
         modelBuilder.ApplyConfiguration(new SettlementRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new RecurringExpenseConfiguration());
     }
 }
