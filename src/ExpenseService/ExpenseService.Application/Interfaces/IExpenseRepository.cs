@@ -1,11 +1,19 @@
 using ExpenseService.Domain.Entities;
+using SharedLibrary.Models;
 
 namespace ExpenseService.Application.Interfaces;
 
 public interface IExpenseRepository
 {
-    Task<Expense> GetByIdAsync(Guid id);
+    Task<Expense?> GetByIdAsync(int id);
     Task<IEnumerable<Expense>> GetAllAsync();
+    Task<IEnumerable<Expense>> GetByUserIdAsync(int userId);
+    Task<IEnumerable<Expense>> GetByCategoryAsync(ExpenseCategory category);
+    Task<IEnumerable<Expense>> GetByTagAsync(string tag);
+    Task<IEnumerable<Expense>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
     Task AddAsync(Expense expense);
+    void Update(Expense expense);
+    void Delete(Expense expense);
+    Task<bool> ExistsAsync(int id);
     Task SaveChangesAsync();
 }
