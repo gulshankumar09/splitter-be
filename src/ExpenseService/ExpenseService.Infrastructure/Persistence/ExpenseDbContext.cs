@@ -23,6 +23,12 @@ public class ExpenseDbContext : DbContext
     public DbSet<BudgetCategory> BudgetCategories { get; set; }
     public DbSet<BudgetAlert> BudgetAlerts { get; set; }
 
+    public DbSet<BankAccount> BankAccounts { get; set; }
+    public DbSet<BankTransaction> BankTransactions { get; set; }
+
+    public DbSet<CalendarConnection> CalendarConnections { get; set; }
+    public DbSet<CalendarEvent> CalendarEvents { get; set; }
+
     public ExpenseDbContext(DbContextOptions<ExpenseDbContext> options) : base(options)
     {
     }

@@ -119,6 +119,13 @@ public class Expense : BaseEntity
         Tags.Remove(tag);
     }
 
+    public void UpdateAmount(decimal newAmount)
+    {
+        Amount = newAmount;
+        // Recalculate splits if needed
+        RecalculateSplits();
+    }
+
     public void AddAttachment(string fileName, string fileType, string fileUrl)
     {
         var attachment = new ExpenseAttachment(fileName, fileType, fileUrl);

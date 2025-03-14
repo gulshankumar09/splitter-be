@@ -30,6 +30,40 @@ builder.Services.AddScoped<IBudgetRepository, BudgetRepository>();
 builder.Services.AddScoped<IBudgetService, BudgetService>();
 builder.Services.AddHostedService<BudgetBackgroundService>();
 
+// Banking Integration Services
+builder.Services.AddScoped<IBankAccountRepository, BankAccountRepository>();
+builder.Services.AddScoped<IBankingIntegrationService, BankingIntegrationService>();
+builder.Services.AddHostedService<BankingImportBackgroundService>();
+builder.Services.Configure<BankingApiOptions>(builder.Configuration.GetSection("BankingApi"));
+builder.Services.Configure<BankingImportOptions>(builder.Configuration.GetSection("BankingImport"));
+
+// Calendar Integration Services
+// TODO: Uncomment once calendar integration classes are implemented
+//builder.Services.AddScoped<ICalendarRepository, CalendarRepository>();
+//builder.Services.AddScoped<ICalendarIntegrationService, CalendarIntegrationService>();
+//builder.Services.AddHostedService<CalendarSyncBackgroundService>();
+//builder.Services.Configure<CalendarOptions>(builder.Configuration.GetSection("Calendar"));
+
+// HTTP Clients for external APIs
+builder.Services.AddHttpClient("BankingApi", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["BankingApi:BaseUrl"] ?? "https://api.banking.com");
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+});
+
+// TODO: Uncomment once calendar integration is implemented
+//builder.Services.AddHttpClient("GoogleCalendar", client =>
+//{
+//    client.BaseAddress = new Uri("https://www.googleapis.com/calendar/v3/");
+//    client.DefaultRequestHeaders.Add("Accept", "application/json");
+//});
+
+//builder.Services.AddHttpClient("MicrosoftGraph", client =>
+//{
+//    client.BaseAddress = new Uri("https://graph.microsoft.com/v1.0/");
+//    client.DefaultRequestHeaders.Add("Accept", "application/json");
+//});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
