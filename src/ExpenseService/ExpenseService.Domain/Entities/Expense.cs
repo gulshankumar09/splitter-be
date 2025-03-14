@@ -7,6 +7,9 @@ public class Expense : BaseEntity
 {
     public string Description { get; private set; }
     public decimal Amount { get; private set; }
+    public string CurrencyCode { get; private set; }
+    public decimal? OriginalAmount { get; private set; }
+    public string? OriginalCurrencyCode { get; private set; }
     public int PaidByUserId { get; private set; }
     public ExpenseCategory Category { get; private set; }
     public string? Notes { get; private set; }
@@ -20,11 +23,12 @@ public class Expense : BaseEntity
     // For EF Core
     private Expense() { }
 
-    public Expense(string description, decimal amount, int paidByUserId, ExpenseCategory category, DateTime expenseDate)
+    public Expense(string description, decimal amount, int paidByUserId, ExpenseCategory category, DateTime expenseDate, string currencyCode = "USD")
         : base()
     {
         Description = description;
         Amount = amount;
+        CurrencyCode = currencyCode;
         PaidByUserId = paidByUserId;
         Category = category;
         ExpenseDate = expenseDate;
@@ -34,14 +38,41 @@ public class Expense : BaseEntity
         Attachments = new List<ExpenseAttachment>();
     }
 
-    public void UpdateDetails(string description, decimal amount, ExpenseCategory category, DateTime expenseDate)
+    public void UpdateDetails(string description, decimal amount, ExpenseCategory category, DateTime expenseDate, string currencyCode = null)
     {
         Description = description;
+
+        // Handle currency change if needed
+        if (currencyCode != null && currencyCode != CurrencyCode)
+        {
+            // Store original values when currency changes
+            OriginalAmount = Amount;
+            OriginalCurrencyCode = CurrencyCode;
+            CurrencyCode = currencyCode;
+        }
+
         Amount = amount;
         Category = category;
         ExpenseDate = expenseDate;
 
         // Recalculate splits if they exist and are not exact amounts
+        RecalculateSplits();
+    }
+
+    public void ConvertCurrency(string newCurrencyCode, decimal exchangeRate)
+    {
+        if (newCurrencyCode == CurrencyCode)
+            return;
+
+        // Store original values
+        OriginalAmount = Amount;
+        OriginalCurrencyCode = CurrencyCode;
+
+        // Convert the amount
+        Amount = Amount * exchangeRate;
+        CurrencyCode = newCurrencyCode;
+
+        // Recalculate splits with new amount
         RecalculateSplits();
     }
 

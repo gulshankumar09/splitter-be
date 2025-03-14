@@ -23,6 +23,14 @@ public class ExpenseRepository : GenericRepository<Expense>, IExpenseRepository
             .FirstOrDefaultAsync(e => e.Id == id);
     }
 
+    public async Task<Expense?> GetByIdWithDetailsAsync(int id)
+    {
+        return await _context.Expenses
+            .Include(e => e.Splits)
+            .Include(e => e.Attachments)
+            .FirstOrDefaultAsync(e => e.Id == id);
+    }
+
     public override async Task<IEnumerable<Expense>> GetAllAsync()
     {
         return await _context.Expenses
@@ -64,6 +72,15 @@ public class ExpenseRepository : GenericRepository<Expense>, IExpenseRepository
             .Include(e => e.Splits)
             .Include(e => e.Attachments)
             .Where(e => e.ExpenseDate >= startDate && e.ExpenseDate <= endDate)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Expense>> GetByGroupIdAsync(int groupId)
+    {
+        return await _context.Expenses
+            .Include(e => e.Splits)
+            .Include(e => e.Attachments)
+            .Where(e => e.GroupId == groupId)
             .ToListAsync();
     }
 

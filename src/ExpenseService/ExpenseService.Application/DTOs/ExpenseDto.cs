@@ -7,6 +7,9 @@ public class ExpenseDto
     public int Id { get; set; }
     public string Description { get; set; } = string.Empty;
     public decimal Amount { get; set; }
+    public string CurrencyCode { get; set; } = "USD";
+    public decimal? OriginalAmount { get; set; }
+    public string? OriginalCurrencyCode { get; set; }
     public int PaidByUserId { get; set; }
     public ExpenseCategory Category { get; set; }
     public string? Notes { get; set; }
@@ -15,6 +18,7 @@ public class ExpenseDto
     public List<ExpenseAttachmentDto> Attachments { get; set; } = new();
     public DateTime ExpenseDate { get; set; }
     public SplitType DefaultSplitType { get; set; }
+    public int? GroupId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
@@ -42,23 +46,27 @@ public class CreateExpenseRequest
 {
     public string Description { get; set; } = string.Empty;
     public decimal Amount { get; set; }
+    public string CurrencyCode { get; set; } = "USD";
     public int PaidByUserId { get; set; }
     public ExpenseCategory Category { get; set; }
     public string? Notes { get; set; }
     public List<string>? Tags { get; set; }
     public DateTime ExpenseDate { get; set; }
     public SplitDetails? SplitDetails { get; set; }
+    public int? GroupId { get; set; }
 }
 
 public class UpdateExpenseRequest
 {
     public string Description { get; set; } = string.Empty;
     public decimal Amount { get; set; }
+    public string? CurrencyCode { get; set; }
     public ExpenseCategory Category { get; set; }
     public string? Notes { get; set; }
     public List<string>? Tags { get; set; }
     public DateTime ExpenseDate { get; set; }
     public SplitDetails? SplitDetails { get; set; }
+    public int? GroupId { get; set; }
 }
 
 public class SplitDetails
@@ -96,4 +104,10 @@ public class AddAttachmentRequest
 public class MarkSplitPaidRequest
 {
     public int UserId { get; set; }
+}
+
+public class ConvertExpenseCurrencyRequest
+{
+    public int ExpenseId { get; set; }
+    public string ToCurrencyCode { get; set; } = string.Empty;
 }

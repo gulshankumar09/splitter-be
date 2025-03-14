@@ -13,6 +13,10 @@ public class ExpenseDbContext : DbContext
     public DbSet<GroupMember> GroupMembers { get; set; }
     public DbSet<SettlementRecord> SettlementRecords { get; set; }
     public DbSet<RecurringExpense> RecurringExpenses { get; set; }
+    public DbSet<Currency> Currencies { get; set; }
+    public DbSet<ExchangeRate> ExchangeRates { get; set; }
+    public DbSet<UserCurrencyPreference> UserCurrencyPreferences { get; set; }
+    public DbSet<GroupCurrencyPreference> GroupCurrencyPreferences { get; set; }
 
     public ExpenseDbContext(DbContextOptions<ExpenseDbContext> options) : base(options)
     {
@@ -27,5 +31,11 @@ public class ExpenseDbContext : DbContext
         modelBuilder.ApplyConfiguration(new GroupMemberConfiguration());
         modelBuilder.ApplyConfiguration(new SettlementRecordConfiguration());
         modelBuilder.ApplyConfiguration(new RecurringExpenseConfiguration());
+
+        // Apply currency-related configurations
+        modelBuilder.ApplyConfiguration(new CurrencyConfiguration());
+        modelBuilder.ApplyConfiguration(new ExchangeRateConfiguration());
+        modelBuilder.ApplyConfiguration(new UserCurrencyPreferenceConfiguration());
+        modelBuilder.ApplyConfiguration(new GroupCurrencyPreferenceConfiguration());
     }
 }
