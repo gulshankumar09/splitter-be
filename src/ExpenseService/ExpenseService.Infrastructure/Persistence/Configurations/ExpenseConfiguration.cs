@@ -43,6 +43,9 @@ public class ExpenseConfiguration : BaseEntityConfiguration<Expense>
                 v => JsonSerializer.Serialize(v, new JsonSerializerOptions()),
                 v => JsonSerializer.Deserialize<List<string>>(v, new JsonSerializerOptions()) ?? new List<string>());
 
+        builder.Property(e => e.GroupId)
+            .IsRequired(false);
+
         builder.HasMany(e => e.Splits)
             .WithOne()
             .HasForeignKey("ExpenseId")

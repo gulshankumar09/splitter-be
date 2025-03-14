@@ -7,6 +7,10 @@ namespace ExpenseService.Infrastructure.Persistence;
 public class ExpenseDbContext : DbContext
 {
     public DbSet<Expense> Expenses { get; set; }
+    public DbSet<ExpenseSplit> ExpenseSplits { get; set; }
+    public DbSet<ExpenseAttachment> ExpenseAttachments { get; set; }
+    public DbSet<Group> Groups { get; set; }
+    public DbSet<GroupMember> GroupMembers { get; set; }
 
     public ExpenseDbContext(DbContextOptions<ExpenseDbContext> options) : base(options)
     {
@@ -16,5 +20,8 @@ public class ExpenseDbContext : DbContext
     {
         modelBuilder.ApplyConfiguration(new ExpenseConfiguration());
         modelBuilder.ApplyConfiguration(new ExpenseSplitConfiguration());
+        modelBuilder.ApplyConfiguration(new ExpenseAttachmentConfiguration());
+        modelBuilder.ApplyConfiguration(new GroupConfiguration());
+        modelBuilder.ApplyConfiguration(new GroupMemberConfiguration());
     }
 }

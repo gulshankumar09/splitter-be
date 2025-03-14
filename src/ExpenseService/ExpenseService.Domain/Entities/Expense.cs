@@ -15,6 +15,7 @@ public class Expense : BaseEntity
     public List<ExpenseAttachment> Attachments { get; private set; }
     public DateTime ExpenseDate { get; private set; }
     public SplitType DefaultSplitType { get; private set; }
+    public int? GroupId { get; private set; }
 
     // For EF Core
     private Expense() { }
@@ -252,5 +253,15 @@ public class Expense : BaseEntity
         {
             Splits.Remove(split);
         }
+    }
+
+    public void AssignToGroup(int groupId)
+    {
+        GroupId = groupId;
+    }
+
+    public void RemoveFromGroup()
+    {
+        GroupId = null;
     }
 }
