@@ -18,6 +18,8 @@ builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<IGroupService, GroupService>();
 builder.Services.AddScoped<ISettlementRepository, SettlementRepository>();
 builder.Services.AddScoped<IBalanceService, BalanceService>();
+builder.Services.AddScoped<IReportingService, ReportingService>();
+builder.Services.AddScoped<IExportService, ExportService>();
 
 var app = builder.Build();
 
