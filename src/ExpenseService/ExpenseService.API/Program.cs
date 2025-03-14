@@ -16,6 +16,8 @@ builder.Services.AddScoped<IExpenseRepository, ExpenseRepository>();
 builder.Services.AddScoped<IExpenseService, ExpenseService.Application.Services.ExpenseService>();
 builder.Services.AddScoped<IGroupRepository, GroupRepository>();
 builder.Services.AddScoped<IGroupService, GroupService>();
+builder.Services.AddScoped<ISettlementRepository, SettlementRepository>();
+builder.Services.AddScoped<IBalanceService, BalanceService>();
 
 var app = builder.Build();
 

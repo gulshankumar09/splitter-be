@@ -11,6 +11,7 @@ public class ExpenseDbContext : DbContext
     public DbSet<ExpenseAttachment> ExpenseAttachments { get; set; }
     public DbSet<Group> Groups { get; set; }
     public DbSet<GroupMember> GroupMembers { get; set; }
+    public DbSet<SettlementRecord> SettlementRecords { get; set; }
 
     public ExpenseDbContext(DbContextOptions<ExpenseDbContext> options) : base(options)
     {
@@ -23,5 +24,6 @@ public class ExpenseDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ExpenseAttachmentConfiguration());
         modelBuilder.ApplyConfiguration(new GroupConfiguration());
         modelBuilder.ApplyConfiguration(new GroupMemberConfiguration());
+        modelBuilder.ApplyConfiguration(new SettlementRecordConfiguration());
     }
 }
