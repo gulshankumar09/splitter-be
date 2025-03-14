@@ -3,6 +3,7 @@ using ExpenseService.API.Services;
 using ExpenseService.Application.Interfaces;
 using ExpenseService.Application.Services;
 using ExpenseService.Infrastructure.Repositories;
+using ExpenseService.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +64,28 @@ builder.Services.AddHttpClient("BankingApi", client =>
 //    client.BaseAddress = new Uri("https://graph.microsoft.com/v1.0/");
 //    client.DefaultRequestHeaders.Add("Accept", "application/json");
 //});
+
+// Add services to the container
+builder.Services.Configure<ImageUploadOptions>(
+    builder.Configuration.GetSection("ImageUpload"));
+builder.Services.Configure<NotificationOptions>(
+    builder.Configuration.GetSection("Notifications"));
+builder.Services.Configure<AuthServiceOptions>(
+    builder.Configuration.GetSection("AuthService"));
+
+builder.Services.AddScoped<IImageUploadService, ImageUploadService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IAuthServiceClient, AuthServiceClient>();
+
+// Add HTTP client for AuthService
+builder.Services.AddHttpClient("AuthService", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["AuthService:BaseUrl"] ?? "http://localhost:5001");
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+    client.Timeout = TimeSpan.FromSeconds(
+        int.Parse(builder.Configuration["AuthService:TimeoutSeconds"] ?? "30"));
+});
 
 var app = builder.Build();
 

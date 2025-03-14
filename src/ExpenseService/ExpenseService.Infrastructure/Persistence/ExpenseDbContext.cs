@@ -1,6 +1,7 @@
 using ExpenseService.Domain.Entities;
 using ExpenseService.Infrastructure.Persistence.Configurations;
 using Microsoft.EntityFrameworkCore;
+using SharedLibrary.Models;
 
 namespace ExpenseService.Infrastructure.Persistence;
 
@@ -29,6 +30,9 @@ public class ExpenseDbContext : DbContext
     public DbSet<CalendarConnection> CalendarConnections { get; set; }
     public DbSet<CalendarEvent> CalendarEvents { get; set; }
 
+    // User Management
+    public DbSet<User> Users { get; set; }
+
     public ExpenseDbContext(DbContextOptions<ExpenseDbContext> options) : base(options)
     {
     }
@@ -53,5 +57,8 @@ public class ExpenseDbContext : DbContext
         modelBuilder.ApplyConfiguration(new BudgetConfiguration());
         modelBuilder.ApplyConfiguration(new BudgetCategoryConfiguration());
         modelBuilder.ApplyConfiguration(new BudgetAlertConfiguration());
+
+        // Apply user configuration
+        modelBuilder.ApplyConfiguration(new UserConfiguration());
     }
 }
